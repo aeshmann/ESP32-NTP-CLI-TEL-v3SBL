@@ -17,4 +17,4 @@
 [Adafruit NeoPixel for built-in RGB led](https://github.com/adafruit/Adafruit_NeoPixel)
 
 
-**Leading goal is String functions fo futher command line handler.**
+**Leading goal is String functions for futher command line handler.**
