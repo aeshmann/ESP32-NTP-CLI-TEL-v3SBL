@@ -2,7 +2,6 @@
 
 ESP32-S3-WROOM NTP CLI TEL, no LCD, no BTN
 
-
 */
 
 
@@ -49,7 +48,6 @@ void onTelnetConnectionAttempt(String ip);
 void onTelnetInput(String str);
 
 String getTimeStr(int);
-String getSensVal(char);
 String uptimeCount();
 
 void commSerial();
@@ -758,6 +756,9 @@ void commSerial()
 
 void setup()
 {
+  rgb_led.begin();
+  rgb_led.setPixelColor(0, rgb_led.Color(64, 0, 0)); // Red
+  rgb_led.show();
   setupSerial(0);
   setupSerial(1);
   initWiFi(mssid, mpass, 20, 500);
@@ -803,8 +804,12 @@ void setup()
 
   boot_timestamp = getTimeStr(0) + ' ' + getTimeStr(6);
   boot_time = time(nullptr);
-
+  rgb_led.setPixelColor(0, rgb_led.Color(0, 64, 0));
+  rgb_led.show();
+  delay(40);
   TRACE("\nGuru meditates...\nESP32 Ready.\n");
+  rgb_led.setPixelColor(0, rgb_led.Color(0, 0, 0));
+  rgb_led.show();
 }
 
 void loop(void)
