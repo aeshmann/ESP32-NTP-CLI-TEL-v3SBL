@@ -10,11 +10,11 @@
 - Command list avaliable by entering "help" command
 
 #### Libraries
-[Aduino stock WiFi.h fo ESP32](https://github.com/espressif/arduino-esp32/blob/master/libraries/WiFi/src/WiFi.h);
+[Aduino stock WiFi.h fo ESP32](https://github.com/espressif/arduino-esp32/blob/master/libraries/WiFi/src/WiFi.h)
 
-[Lennart Hennigs ESP Telnet](https://github.com/LennartHennigs/ESPTelnet);
+[Lennart Hennigs ESP Telnet](https://github.com/LennartHennigs/ESPTelnet)
 
-[Adafruit NeoPixel for built-in RGB led](https://github.com/adafruit/Adafruit_NeoPixel);
+[Adafruit NeoPixel for built-in RGB led](https://github.com/adafruit/Adafruit_NeoPixel)
 
 
 **Leading goal is String functions fo futher command line handler.**
