@@ -25,8 +25,8 @@ const char *ntpHost0 = "0.ru.pool.ntp.org";
 const char *ntpHost1 = "1.ru.pool.ntp.org";
 const char *ntpHost2 = "2.ru.pool.ntp.org";
 
-const char *mssid = "Xiaomi_065C";
-const char *mpass = "43v3ry0nG";
+const char *mssid = "SSID";
+const char *mpass = "PASS";
 
 IPAddress ip;
 const uint16_t port = 23;
