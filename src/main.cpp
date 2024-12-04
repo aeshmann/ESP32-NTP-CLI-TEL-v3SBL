@@ -47,12 +47,8 @@ void onTelnetConnectionAttempt(String ip);
 void onTelnetInput(String str);
 void onSerialInput();
 String commandHandler(String);
-
 String getTimeStr(int);
 String uptimeCount();
-
-void commSerial();
-
 String infoWiFi();
 String infoChip();
 String scanWiFi();
