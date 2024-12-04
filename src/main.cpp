@@ -10,13 +10,12 @@ ESP32-S3-WROOM NTP CLI TEL, no LCD, no BTN
 #include <ESPTelnet.h>
 #include <Adafruit_NeoPixel.h>
 #include "cline.h"
+#include "comm.h"
 
 #define RXD1 18
 #define TXD1 17
 
 #define TIMEZONE "MSK-3"                      // local time zone definition (Moscow)
-#define TRACE(...) Serial.printf(__VA_ARGS__) // Serial output simplified
-#define TLNET(...) telnet.printf(__VA_ARGS__) // Telnet output simplified
 
 #define RGB_LED_PIN 48
 #define NUM_RGB_LEDS 1 // number of RGB LEDs (1 WS2812 LED)
@@ -32,11 +31,11 @@ IPAddress ip;
 const uint16_t port = 23;
 const int serial_speed = 115200;
 String client_ip;
-String boot_timestamp;
+String boot_date;
 time_t boot_time;
 
 bool initWiFi(const char *, const char *, int, int);
-bool isConnected();
+bool isOnWiFi();
 
 void setupSerial(int);
 void setupTelnet();
@@ -46,11 +45,14 @@ void onTelnetDisconnect(String ip);
 void onTelnetReconnect(String ip);
 void onTelnetConnectionAttempt(String ip);
 void onTelnetInput(String str);
+void onSerialInput();
+String commandHandler(String);
 
 String getTimeStr(int);
 String uptimeCount();
 
 void commSerial();
+
 String infoWiFi();
 String infoChip();
 String scanWiFi();
@@ -74,14 +76,14 @@ bool initWiFi(const char *mssid, const char *mpass,
     delay(pause);
     TRACE(".");
     i++;
-  } while (!isConnected() && i < max_tries);
+  } while (!isOnWiFi() && i < max_tries);
   TRACE("\nConnected!\n");
   WiFi.setAutoReconnect(true);
   WiFi.persistent(true);
-  return isConnected();
+  return isOnWiFi();
 }
 
-bool isConnected()
+bool isOnWiFi()
 {
   return (WiFi.status() == WL_CONNECTED);
 }
@@ -141,7 +143,6 @@ String uptimeCount() {
   return uptimeStr;
 }
 
-
 void setupTelnet()
 {
   // passing on functions for various telnet events
@@ -164,199 +165,46 @@ void setupTelnet()
   return;
 }
 
-void onTelnetConnect(String ip)
+void onTelnetConnect(const String ip)
 {
   TRACE("- Telnet: %s connected\n", ip.c_str());
   TLNET("\nWelcome %s\n(Use ^] +q to disconnect)\n", telnet.getIP().c_str());
   client_ip = ip.c_str();
 }
 
-void onTelnetDisconnect(String ip)
+void onTelnetDisconnect(const String ip)
 {
   TRACE("- Telnet: %s disconnected\n", ip.c_str());
 }
 
-void onTelnetReconnect(String ip)
+void onTelnetReconnect(const String ip)
 {
   TRACE("- Telnet: %s reconnected\n", ip.c_str());
 }
 
-void onTelnetConnectionAttempt(String ip)
+void onTelnetConnectionAttempt(const String ip)
 {
   TRACE("- Telnet: %s tried to connect\n", ip.c_str());
 }
 
-void onTelnetInput(String comm_telnet)
+void onTelnetInput(const String comm_telnet)
 {
   TLNET("[%s] > %s\n", getTimeStr(0), comm_telnet);
-  int comm_case_t = 0;
-  for (int i = 1; i < comm_qty; i++)
-  {
-    if (comm_array[i][0] == comm_telnet)
-    {
-      comm_case_t = i;
-      break;
-    }
-    else
-    {
-      comm_case_t = 0;
-    }
-  }
+  TLNET("%s", commandHandler(comm_telnet).c_str());
+}
 
-  switch (comm_case_t)
+void onSerialInput() {
+  if (Serial.available())
   {
-  case 0:
-  {
-    TLNET("Command \"%s\" not understood\n", comm_telnet);
-    break;
-  }
-  case 1:
-  {
-    TLNET("%s %s %s\n",
-          comm_about, __DATE__, __TIME__);
-    break;
-  }
-  case 2:
-  {
-    TLNET("%s", term_clear);
-    break;
-  }
-  case 3:
-  {
-    TLNET("Hi, %s!\n", client_ip.c_str());
-    break;
-  }
-  case 4:
-  {
-    TLNET(">pong\n");
-    TRACE("- Telnet: >pong\n");
-
-    break;
-  }
-  case 5:
-  {
-    for (int k = 1; k < comm_qty; k++)
-    {
-      TLNET("[ %d ] %s\t- %s\n", k, comm_array[k][0], comm_array[k][1].c_str());
-    }
-    break;
-  }
-  case 6:
-  {
-    TLNET("%s\n", infoWiFi().c_str());
-    break;
-  }
-  case 7:
-  {
-    TLNET("%s\n", infoChip().c_str());
-    break;
-  }
-  case 8:
-  {
-    TLNET("Disconnecting you!\n");
-    telnet.disconnectClient();
-
-    break;
-  }
-  case 9:
-  {
-    TLNET("%s\n", getTimeStr(0));
-    break;
-  }
-  case 10:
-  {
-    TLNET("%s\n", getTimeStr(7));
-    break;
-  }
-  case 11:
-  {
-    TLNET("Turning WiFi on/off unavaliable on telnet session\n");
-    break;
-  }
-  case 12:
-  {
-    TLNET("Turning WiFi on/off unavaliable on telnet session\n");
-    break;
-  }
-  case 13:
-  {
-    TLNET("WiFi scan start at %s\n", getTimeStr(0));
-    TLNET("%s\n", scanWiFi().c_str());
-    TLNET("Scan complete.\n");
-    WiFi.scanDelete();
-    break;
-  }
-  case 14:
-  {
-    TLNET("WiFi RSSI: %d dBm\n", WiFi.RSSI());
-    break;
-  }
-  case 15:
-  {
-    TLNET("%s\n", ESP.getChipModel());
-    break;
-  }
-  case 16:
-  {
-    TLNET("ESP restating, you'll be disconnected\n");
-    TLNET("Bye, %s\n", client_ip.c_str());
-    delay(1000);
-    telnet.disconnectClient();
-    delay(2000);
-    ESP.restart();
-    break;
-  }
-  case 17:
-  {
-    TLNET("Starting soft reset MCU,\ndon't know where this will lead :/\n");
-    setup();
-    break;
-  }
-  case 18:
-  {
-    TLNET("System start: %s\n", boot_timestamp.c_str());
-    TLNET("Uptime: %s\n", uptimeCount().c_str());
-    break;
-  }
-  case 19:
-  {
-    TLNET("LCD dismantled\n");
-    break;
-  }
-
-  case 20:
-  {
-    if (!Serial)
-    {
-      TLNET("Starting setup Serial\n");
-      setupSerial(0);
-    }
-    else
-    {
-      TLNET("Serial is already up!\n");
-    }
-    break;
-  }
-  case 21:
-  {
-    TLNET("BTN dismantled\n");
-    break;
-  }
-  case 22:
-  {
-    TLNET("Sensor dismantled\n");
-    break;
-  }
-  case 23:
-  {
-    TLNET("Sensor dismantled\n");
-  }
+    String comm_serial = Serial.readStringUntil('\n');
+    TRACE("[%s] > %s :\n", getTimeStr(0), comm_serial);
+    TRACE("%s", commandHandler(comm_serial).c_str());
   }
 }
 
 String infoWiFi() {
   String wfinf("");
-  if (isConnected()) {
+  if (isOnWiFi()) {
     wfinf += "WiFi SSID: ";
     wfinf += WiFi.SSID();
     wfinf += " (ch ";
@@ -512,7 +360,6 @@ String infoChip() {
   return infoChipAll;
 }
 
-
 String getTimeStr(int numStr)
 {
   time_t tnow = time(nullptr);
@@ -553,151 +400,126 @@ String getTimeStr(int numStr)
   return timeStrRet;
 }
 
-void commSerial()
-{
-  if (Serial.available())
-  {
-    String comm_serial = Serial.readStringUntil('\n');
-    TRACE("[%s] > %s :\n", getTimeStr(0), comm_serial);
-    int comm_case_s = 0;
-    for (int i = 1; i < comm_qty; i++)
-    {
-      if (comm_array[i][0] == comm_serial)
-      {
-        comm_case_s = i;
-        break;
-      }
-      else
-      {
-        comm_case_s = 0;
-      }
+String commandHandler(const String comm_input) {
+  int exec_case = 0;
+  String comm_output("");
+  for (int i = 1; i < comm_qty; i++) {
+    if (comm_array[i][0] == comm_input) {
+      exec_case = i;
+      break;
+    } else {
+      exec_case = 0;
     }
+  }
 
-    switch (comm_case_s)
-    {
+  switch (exec_case)
+  {
     case 0:
     {
-      TRACE("%s \"%s\"\n", comm_err, comm_serial);
+      comm_output += "Command \"" + comm_input + "\" not understood\n";
       break;
     }
     case 1:
     {
-      TRACE("%s %s\n", comm_about, build_date);
+      comm_output += "ESP32-S3 Boad CLI. Built: " + String(__DATE__) + ' ' + String(__TIME__) + '\n';
       break;
     }
     case 2:
     {
-      TRACE("%s\n", term_clear);
+      comm_output += term_clear;
       break;
     }
     case 3:
     {
-      TRACE("%s %s !\n", comm_helo, client_ip.c_str());
+      comm_output += "Hi, " + client_ip + '\n';
       break;
     }
     case 4:
     {
-      TRACE("Pong!\n");
+      comm_output += "Pong!\n";
       break;
     }
     case 5:
     {
-      for (int j = 1; j < comm_qty; j++)
-      {
-        TRACE("[ %d ] %s\t- %s\n", j, comm_array[j][0], comm_array[j][1].c_str());
+      for (int k = 1; k < comm_qty; k++) {
+        comm_output += "[ " + String(k) + " ] " + comm_array[k][0] + "\t - " + comm_array[k][1] + '\n';
       }
       break;
     }
     case 6:
     {
-      TRACE("%s\n", infoWiFi().c_str());
+      comm_output += infoWiFi();
+      comm_output += '\n';
       break;
     }
     case 7:
     {
-      //infoChip(5); // ag int: 5 - to Seial, 7 - to telnet
-      TRACE("%s\n", infoChip().c_str());
+      comm_output += infoChip();
+      comm_output += '\n';
       break;
     }
     case 8:
     {
-      TRACE("This command will stop serial, proceed? yes/no\n");
-      while (!Serial.available())
-      {
-        ;
-      }
-      String serial_switch = Serial.readStringUntil('\n');
-      if (serial_switch == "yes")
-      {
-        TRACE("Serial will shut down\n");
-        delay(1000);
-        Serial.end();
-        serial_switch = "";
-      }
-      else
-      {
-        TRACE("Serial status unchanged\n");
-      }
-      TRACE("(command under development)\n");
+      comm_output += "Client " + client_ip + " disconnected\n";
+      telnet.disconnectClient();
       break;
     }
     case 9:
     {
-      TRACE("%s\n", getTimeStr(0));
+      comm_output += getTimeStr(0) + '\n';
       break;
     }
     case 10:
     {
-      TRACE("%s\n", getTimeStr(7));
+      comm_output += getTimeStr(7) + '\n';
       break;
     }
     case 11:
     {
-      if (!isConnected())
-      {
+      if (!isOnWiFi()) {
+        comm_output += "Connecting WiFi to " + String(mssid) + '\n';
         initWiFi(mssid, mpass, 20, 500);
-      }
-      else
-      {
-        TRACE("WiFi is already connected!\n");
+      } else {
+        comm_output += "WiFi is already connected!\n";
       }
       break;
     }
     case 12:
     {
-      if (isConnected())
-      {
+      if (isOnWiFi()) {
         WiFi.disconnect();
-        digitalWrite(LED_BUILTIN, LOW);
-        TRACE("WiFi disconnected\n");
-      }
-      else
-      {
-        TRACE("WiFi is already disconnected!\n");
+        comm_output += "WiFi disconnected\n";
+      } else {
+        comm_output += "WiFi is already disconnected\n";
       }
       break;
     }
     case 13:
     {
-      TRACE("WiFi scan start at %s\n", getTimeStr(0));
-      TRACE("%s\n", scanWiFi().c_str());
-      TRACE("Scan complete.\n");
-      WiFi.scanDelete();
+      comm_output += "WiFi scan starts at " + getTimeStr(0) + '\n';
+      comm_output += scanWiFi();
+      comm_output += "Scan complete\n";
       break;
     }
     case 14:
     {
-      TRACE("WiFi RSSI: %d dBm\n", WiFi.RSSI());
+      comm_output += "RSSI: " + String(WiFi.RSSI()) + "dBm\n";
       break;
     }
     case 15:
     {
-      TRACE("%s\n", ESP.getChipModel());
+      comm_output += String(ESP.getChipModel()) + '\n';
       break;
     }
     case 16:
     {
-      TRACE("ESP restarting in 3 sec\n");
+      comm_output += "ESP restating in 3 sec\n";
+      TRACE("%s", comm_output.c_str());
+      if (telnet.isConnected()) {
+        TLNET("%s", comm_output.c_str());
+        TLNET("Disconnecting you!\n");
+        telnet.disconnectClient();
+      }
       static int reboot_time = millis() + 3000;
       while (millis() < reboot_time)
       {
@@ -709,49 +531,48 @@ void commSerial()
     }
     case 17:
     {
-      TRACE("Starting soft reset MCU\n");
+      comm_output+= "Running setup()\n";
       setup();
+      break;
     }
-    break;
     case 18:
     {
-      TRACE("System start: %s\n", boot_timestamp.c_str());
-      TRACE("Uptime: %s\n", uptimeCount().c_str());
+      comm_output += "System start : " + boot_date + '\n';
+      comm_output += "System uptime: " + uptimeCount() + '\n';
       break;
     }
     case 19:
     {
-      TRACE("LCD dismantled\n");
+      comm_output += "Considering LCD switched\n";
       break;
     }
     case 20:
     {
-      if (Serial)
-      {
-        TRACE("Serial is already up!\n");
-      }
-      else
-      {
+      if (Serial) {
+        comm_output += "Serial is already up!\n";
+      } else {
         setupSerial(0);
+        comm_output += "Setting up Serial\n";
       }
       break;
     }
     case 21:
     {
-      TRACE("Buttons are dismantled\n");
+      comm_output += "Considering Button test\n";
       break;
     }
     case 22:
     {
-      TRACE("Sensors are dismantled\n");
+      comm_output += "Considering Sensor test\n";
       break;
     }
     case 23:
     {
-      TRACE("Sensors are dismantled\n");
-    }
+      comm_output += "Considering sensor vals\n";
+      break;
     }
   }
+  return comm_output;
 }
 
 void setup()
@@ -762,9 +583,10 @@ void setup()
   setupSerial(0);
   setupSerial(1);
   initWiFi(mssid, mpass, 20, 500);
+  WiFi.setSleep(WIFI_PS_NONE);
   WiFi.printDiag(Serial);
 
-  if (isConnected())
+  if (isOnWiFi())
   {
     ip = WiFi.localIP();
     TRACE("\n- Telnet: %s:%u\n", ip.toString().c_str(), port);
@@ -802,19 +624,24 @@ void setup()
   }
   TRACE("\n");
 
-  boot_timestamp = getTimeStr(0) + ' ' + getTimeStr(6);
+  boot_date = getTimeStr(0) + ' ' + getTimeStr(6);
   boot_time = time(nullptr);
-  rgb_led.setPixelColor(0, rgb_led.Color(0, 64, 0));
-  rgb_led.show();
-  delay(40);
+
   TRACE("\nGuru meditates...\nESP32 Ready.\n");
-  rgb_led.setPixelColor(0, rgb_led.Color(0, 0, 0));
-  rgb_led.show();
+  for (int i = 0; i < 2; i++)
+  {
+    rgb_led.setPixelColor(0, rgb_led.Color(0, 64, 0));
+    rgb_led.show();
+    delay(50);
+    rgb_led.setPixelColor(0, rgb_led.Color(0, 0, 0));
+    rgb_led.show();
+    delay(150);
+  }
 }
 
 void loop(void)
 {
   telnet.loop();
-  commSerial();
+  onSerialInput();
 }
 

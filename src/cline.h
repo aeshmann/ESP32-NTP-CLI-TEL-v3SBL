@@ -30,11 +30,6 @@ const String comm_array[][2]{
     {"sens", "show sensor values"}           // 23
 };
 
-const char* comm_about =
-"\nHi! I'm ESP32 WROOM Board\n"
-"Sketch of NTP clock, telnet\n"
-"and some CLI commands\n"
-"compiled: ";
-const char* comm_err = "Command not understood: ";
-const char* comm_helo = "Hi, ";
-const char* tnet_discon = "Disconnecting you!";
+// const char* comm_err = "Command not understood: ";
+// const char* comm_helo = "Hi, ";
+// const char* tnet_discon = "Disconnecting you!";
