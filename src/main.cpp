@@ -73,6 +73,7 @@ bool initWiFi(const char *mssid, const char *mpass,
     TRACE(".");
     i++;
   } while (!isOnWiFi() && i < max_tries);
+  WiFi.setSleep(WIFI_PS_NONE);
   TRACE("\nConnected!\n");
   WiFi.setAutoReconnect(true);
   WiFi.persistent(true);
@@ -579,7 +580,6 @@ void setup()
   setupSerial(0);
   setupSerial(1);
   initWiFi(mssid, mpass, 20, 500);
-  WiFi.setSleep(WIFI_PS_NONE);
   WiFi.printDiag(Serial);
 
   if (isOnWiFi())
