@@ -34,56 +34,31 @@ String client_ip;
 String boot_date;
 time_t boot_time;
 
+void errorMsg(String, bool);
+
 bool initWiFi(const char *, const char *, int, int);
 bool isOnWiFi();
 
 void setupSerial(int);
 void setupTelnet();
-void errorMsg(String, bool);
+
 void onTelnetConnect(String ip);
 void onTelnetDisconnect(String ip);
 void onTelnetReconnect(String ip);
 void onTelnetConnectionAttempt(String ip);
 void onTelnetInput(String str);
 void onSerialInput();
-String commandHandler(String);
+
+String commHandler(String);
 String getTimeStr(int);
 String uptimeCount();
 String infoWiFi();
-String infoChip();
 String scanWiFi();
+String infoChip();
+
 
 ESPTelnet telnet;
 Adafruit_NeoPixel rgb_led = Adafruit_NeoPixel(NUM_RGB_LEDS, RGB_LED_PIN, NEO_GRB + NEO_KHZ800);
-
-
-bool initWiFi(const char *mssid, const char *mpass,
-              int max_tries = 20, int pause = 500)
-{
-  int i = 0;
-  WiFi.mode(WIFI_STA);
-  WiFi.disconnect();
-  digitalWrite(LED_BUILTIN, LOW);
-  delay(100);
-  TRACE("Connecting to Wifi:\n");
-  WiFi.begin(mssid, mpass);
-  do
-  {
-    delay(pause);
-    TRACE(".");
-    i++;
-  } while (!isOnWiFi() && i < max_tries);
-  WiFi.setSleep(WIFI_PS_NONE);
-  TRACE("\nConnected!\n");
-  WiFi.setAutoReconnect(true);
-  WiFi.persistent(true);
-  return isOnWiFi();
-}
-
-bool isOnWiFi()
-{
-  return (WiFi.status() == WL_CONNECTED);
-}
 
 void errorMsg(String error, bool restart = true)
 {
@@ -95,6 +70,33 @@ void errorMsg(String error, bool restart = true)
     ESP.restart();
     delay(2000);
   }
+}
+
+bool initWiFi(const char *mssid, const char *mpass,
+              int max_tries = 20, int pause = 500)
+{
+  int i = 0;
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  delay(100);
+  TRACE("Connecting to Wifi:\n");
+  WiFi.begin(mssid, mpass);
+  do
+  {
+    delay(pause);
+    TRACE(".");
+    i++;
+  } while (!isOnWiFi() && i < max_tries);
+  WiFi.setSleep(WIFI_PS_NONE);
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(true);
+  TRACE("\nConnected!\n");
+  return isOnWiFi();
+}
+
+bool isOnWiFi()
+{
+  return (WiFi.status() == WL_CONNECTED);
 }
 
 void setupSerial(int uart_num)
@@ -125,19 +127,6 @@ void setupSerial(int uart_num)
   {
     return;
   }
-}
-
-String uptimeCount() {
-
-  time_t curr_time = time(nullptr);
-  time_t up_time = curr_time - boot_time;
-  int uptime_dd = up_time / 86400;
-  int uptime_hh = (up_time / 3600) % 24;
-  int uptime_mm = (up_time / 60 ) % 60;
-  int uptime_ss = up_time % 60;
-
-  String uptimeStr(String(uptime_dd) + " days " + String(uptime_hh) + " hours " + String(uptime_mm) + " minutes " + String(uptime_ss) + " seconds");
-  return uptimeStr;
 }
 
 void setupTelnet()
@@ -187,7 +176,7 @@ void onTelnetConnectionAttempt(const String ip)
 void onTelnetInput(const String comm_telnet)
 {
   TLNET("[%s] > %s\n", getTimeStr(0), comm_telnet);
-  TLNET("%s", commandHandler(comm_telnet).c_str());
+  TLNET("%s", commHandler(comm_telnet).c_str());
 }
 
 void onSerialInput() {
@@ -195,8 +184,240 @@ void onSerialInput() {
   {
     String comm_serial = Serial.readStringUntil('\n');
     TRACE("[%s] > %s :\n", getTimeStr(0), comm_serial);
-    TRACE("%s", commandHandler(comm_serial).c_str());
+    TRACE("%s", commHandler(comm_serial).c_str());
   }
+}
+
+String commHandler(const String comm_input) {
+  int exec_case = 0;
+  String comm_output("");
+  for (int i = 1; i < comm_qty; i++) {
+    if (comm_array[i][0] == comm_input) {
+      exec_case = i;
+      break;
+    } else {
+      exec_case = 0;
+    }
+  }
+
+  switch (exec_case)
+  {
+    case 0:
+    {
+      comm_output += "Command \"" + comm_input + "\" not understood\n";
+      break;
+    }
+    case 1:
+    {
+      comm_output += "ESP32-S3 Boad CLI. Built: " + String(__DATE__) + ' ' + String(__TIME__) + '\n';
+      break;
+    }
+    case 2:
+    {
+      comm_output += term_clear;
+      break;
+    }
+    case 3:
+    {
+      comm_output += "Hi, " + client_ip + '\n';
+      break;
+    }
+    case 4:
+    {
+      comm_output += "Pong!\n";
+      break;
+    }
+    case 5:
+    {
+      for (int k = 1; k < comm_qty; k++) {
+        if (k < 10) {
+          comm_output += "[  " + String(k) + " ] " + comm_array[k][0] + "\t - " + comm_array[k][1] + '\n';
+        } else {
+          comm_output += "[ " + String(k) + " ] " + comm_array[k][0] + "\t - " + comm_array[k][1] + '\n';
+        }
+      }
+      break;
+    }
+    case 6:
+    {
+      comm_output += infoWiFi();
+      comm_output += '\n';
+      break;
+    }
+    case 7:
+    {
+      comm_output += infoChip();
+      comm_output += '\n';
+      break;
+    }
+    case 8:
+    {
+      comm_output += "Client " + client_ip + " disconnected\n";
+      telnet.disconnectClient();
+      break;
+    }
+    case 9:
+    {
+      comm_output += getTimeStr(0) + '\n';
+      break;
+    }
+    case 10:
+    {
+      comm_output += getTimeStr(7) + '\n';
+      break;
+    }
+    case 11:
+    {
+      if (!isOnWiFi()) {
+        comm_output += "Connecting WiFi to " + String(mssid) + '\n';
+        initWiFi(mssid, mpass, 20, 500);
+      } else {
+        comm_output += "WiFi is already connected!\n";
+      }
+      break;
+    }
+    case 12:
+    {
+      if (isOnWiFi()) {
+        WiFi.disconnect();
+        comm_output += "WiFi disconnected\n";
+      } else {
+        comm_output += "WiFi is already disconnected\n";
+      }
+      break;
+    }
+    case 13:
+    {
+      comm_output += "WiFi scan starts at " + getTimeStr(0) + '\n';
+      comm_output += scanWiFi();
+      comm_output += "Scan complete\n";
+      break;
+    }
+    case 14:
+    {
+      comm_output += "RSSI: " + String(WiFi.RSSI()) + "dBm\n";
+      break;
+    }
+    case 15:
+    {
+      comm_output += String(ESP.getChipModel()) + '\n';
+      break;
+    }
+    case 16:
+    {
+      comm_output += "ESP restating in 3 sec\n";
+      TRACE("%s", comm_output.c_str());
+      if (telnet.isConnected()) {
+        TLNET("%s", comm_output.c_str());
+        TLNET("Disconnecting you!\n");
+        telnet.disconnectClient();
+      }
+      static int reboot_time = millis() + 3000;
+      while (millis() < reboot_time)
+      {
+        TRACE(".");
+        delay(200);
+      }
+      ESP.restart();
+      break;
+    }
+    case 17:
+    {
+      comm_output+= "Running setup()\n";
+      setup();
+      break;
+    }
+    case 18:
+    {
+      comm_output += "System start : " + boot_date + '\n';
+      comm_output += "System uptime: " + uptimeCount() + '\n';
+      break;
+    }
+    case 19:
+    {
+      comm_output += "Considering LCD switched\n";
+      break;
+    }
+    case 20:
+    {
+      if (Serial) {
+        comm_output += "Serial is already up!\n";
+      } else {
+        setupSerial(0);
+        comm_output += "Setting up Serial\n";
+      }
+      break;
+    }
+    case 21:
+    {
+      comm_output += "Considering Button test\n";
+      break;
+    }
+    case 22:
+    {
+      comm_output += "Considering Sensor test\n";
+      break;
+    }
+    case 23:
+    {
+      comm_output += "Considering sensor vals\n";
+      break;
+    }
+  }
+  return comm_output;
+}
+
+String getTimeStr(int numStr)
+{
+  time_t tnow = time(nullptr);
+  struct tm *timeinfo;
+  time(&tnow);
+  timeinfo = localtime(&tnow);
+  char timeStrRet[32];
+  switch (numStr)
+  {
+  case 0:
+    strftime(timeStrRet, 32, "%T", timeinfo); // ISO8601 (HH:MM:SS)
+    break;
+  case 1:
+    strftime(timeStrRet, 32, "%R", timeinfo); // HH:MM
+    break;
+  case 3:
+    strftime(timeStrRet, 32, "%H", timeinfo); // HH
+    break;
+  case 4:
+    strftime(timeStrRet, 32, "%M", timeinfo); // MM
+    break;
+  case 5:
+    strftime(timeStrRet, 32, "%S", timeinfo); // SS
+    break;
+  case 6:
+    strftime(timeStrRet, 32, "%a %d %h", timeinfo); // Thu 23 Aug
+    break;
+  case 7:
+    strftime(timeStrRet, 32, "%d.%m.%g", timeinfo); // 23.08.24
+    break;
+  case 8:
+    strftime(timeStrRet, 32, "%d %h", timeinfo); // 23 Aug
+    break;
+  case 9:
+    strftime(timeStrRet, 32, "%c", timeinfo); // Thu Aug 23 14:55:02 2001
+    break;
+  }
+  return timeStrRet;
+}
+
+String uptimeCount() {
+
+  time_t curr_time = time(nullptr);
+  time_t up_time = curr_time - boot_time;
+  int uptime_dd = up_time / 86400;
+  int uptime_hh = (up_time / 3600) % 24;
+  int uptime_mm = (up_time / 60 ) % 60;
+  int uptime_ss = up_time % 60;
+
+  String uptimeStr(String(uptime_dd) + " days " + String(uptime_hh) + " hours " + String(uptime_mm) + " minutes " + String(uptime_ss) + " seconds");
+  return uptimeStr;
 }
 
 String infoWiFi() {
@@ -357,220 +578,6 @@ String infoChip() {
   return infoChipAll;
 }
 
-String getTimeStr(int numStr)
-{
-  time_t tnow = time(nullptr);
-  struct tm *timeinfo;
-  time(&tnow);
-  timeinfo = localtime(&tnow);
-  char timeStrRet[32];
-  switch (numStr)
-  {
-  case 0:
-    strftime(timeStrRet, 32, "%T", timeinfo); // ISO8601 (HH:MM:SS)
-    break;
-  case 1:
-    strftime(timeStrRet, 32, "%R", timeinfo); // HH:MM
-    break;
-  case 3:
-    strftime(timeStrRet, 32, "%H", timeinfo); // HH
-    break;
-  case 4:
-    strftime(timeStrRet, 32, "%M", timeinfo); // MM
-    break;
-  case 5:
-    strftime(timeStrRet, 32, "%S", timeinfo); // SS
-    break;
-  case 6:
-    strftime(timeStrRet, 32, "%a %d %h", timeinfo); // Thu 23 Aug
-    break;
-  case 7:
-    strftime(timeStrRet, 32, "%d.%m.%g", timeinfo); // 23.08.24
-    break;
-  case 8:
-    strftime(timeStrRet, 32, "%d %h", timeinfo); // 23 Aug
-    break;
-  case 9:
-    strftime(timeStrRet, 32, "%c", timeinfo); // Thu Aug 23 14:55:02 2001
-    break;
-  }
-  return timeStrRet;
-}
-
-String commandHandler(const String comm_input) {
-  int exec_case = 0;
-  String comm_output("");
-  for (int i = 1; i < comm_qty; i++) {
-    if (comm_array[i][0] == comm_input) {
-      exec_case = i;
-      break;
-    } else {
-      exec_case = 0;
-    }
-  }
-
-  switch (exec_case)
-  {
-    case 0:
-    {
-      comm_output += "Command \"" + comm_input + "\" not understood\n";
-      break;
-    }
-    case 1:
-    {
-      comm_output += "ESP32-S3 Boad CLI. Built: " + String(__DATE__) + ' ' + String(__TIME__) + '\n';
-      break;
-    }
-    case 2:
-    {
-      comm_output += term_clear;
-      break;
-    }
-    case 3:
-    {
-      comm_output += "Hi, " + client_ip + '\n';
-      break;
-    }
-    case 4:
-    {
-      comm_output += "Pong!\n";
-      break;
-    }
-    case 5:
-    {
-      for (int k = 1; k < comm_qty; k++) {
-        comm_output += "[ " + String(k) + " ] " + comm_array[k][0] + "\t - " + comm_array[k][1] + '\n';
-      }
-      break;
-    }
-    case 6:
-    {
-      comm_output += infoWiFi();
-      comm_output += '\n';
-      break;
-    }
-    case 7:
-    {
-      comm_output += infoChip();
-      comm_output += '\n';
-      break;
-    }
-    case 8:
-    {
-      comm_output += "Client " + client_ip + " disconnected\n";
-      telnet.disconnectClient();
-      break;
-    }
-    case 9:
-    {
-      comm_output += getTimeStr(0) + '\n';
-      break;
-    }
-    case 10:
-    {
-      comm_output += getTimeStr(7) + '\n';
-      break;
-    }
-    case 11:
-    {
-      if (!isOnWiFi()) {
-        comm_output += "Connecting WiFi to " + String(mssid) + '\n';
-        initWiFi(mssid, mpass, 20, 500);
-      } else {
-        comm_output += "WiFi is already connected!\n";
-      }
-      break;
-    }
-    case 12:
-    {
-      if (isOnWiFi()) {
-        WiFi.disconnect();
-        comm_output += "WiFi disconnected\n";
-      } else {
-        comm_output += "WiFi is already disconnected\n";
-      }
-      break;
-    }
-    case 13:
-    {
-      comm_output += "WiFi scan starts at " + getTimeStr(0) + '\n';
-      comm_output += scanWiFi();
-      comm_output += "Scan complete\n";
-      break;
-    }
-    case 14:
-    {
-      comm_output += "RSSI: " + String(WiFi.RSSI()) + "dBm\n";
-      break;
-    }
-    case 15:
-    {
-      comm_output += String(ESP.getChipModel()) + '\n';
-      break;
-    }
-    case 16:
-    {
-      comm_output += "ESP restating in 3 sec\n";
-      TRACE("%s", comm_output.c_str());
-      if (telnet.isConnected()) {
-        TLNET("%s", comm_output.c_str());
-        TLNET("Disconnecting you!\n");
-        telnet.disconnectClient();
-      }
-      static int reboot_time = millis() + 3000;
-      while (millis() < reboot_time)
-      {
-        TRACE(".");
-        delay(200);
-      }
-      ESP.restart();
-      break;
-    }
-    case 17:
-    {
-      comm_output+= "Running setup()\n";
-      setup();
-      break;
-    }
-    case 18:
-    {
-      comm_output += "System start : " + boot_date + '\n';
-      comm_output += "System uptime: " + uptimeCount() + '\n';
-      break;
-    }
-    case 19:
-    {
-      comm_output += "Considering LCD switched\n";
-      break;
-    }
-    case 20:
-    {
-      if (Serial) {
-        comm_output += "Serial is already up!\n";
-      } else {
-        setupSerial(0);
-        comm_output += "Setting up Serial\n";
-      }
-      break;
-    }
-    case 21:
-    {
-      comm_output += "Considering Button test\n";
-      break;
-    }
-    case 22:
-    {
-      comm_output += "Considering Sensor test\n";
-      break;
-    }
-    case 23:
-    {
-      comm_output += "Considering sensor vals\n";
-      break;
-    }
-  }
-  return comm_output;
-}
 
 void setup()
 {
