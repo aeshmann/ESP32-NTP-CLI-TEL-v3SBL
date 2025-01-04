@@ -1,35 +1,80 @@
 #include <cstdint>
+#include <Arduino.h>
 
-const char* build_date = __DATE__ " " __TIME__;
-const char* term_clear = "\033[2J\033[H";
-const int comm_qty = 24;
-const String comm_array[][2]{
-    {"", "error"},                           // 0
-    {"abt", "information about chip"},       // 1
-    {"cls", "clear terminal screen"},        // 2
-    {"helo", "greets you, showing ip"},      // 3
-    {"ping", "echoes reply \"pong\""},       // 4
-    {"help", "prints command help"},         // 5
-    {"wfinf", "prints wifi info"},           // 6
-    {"hwinf", "prints chip info"},           // 7
-    {"bye", "disconnects your session"},     // 8
-    {"time", "prints current time"},         // 9
-    {"date", "prints current date"},         // 10
-    {"wfcon", "connects to wifi"},           // 11
-    {"wfoff", "turns off wifi"},             // 12
-    {"wfscn", "scans for wifi networks"},    // 13
-    {"rssi", "prints wifi RSSI"},            // 14
-    {"uname", "prints chip name"},           // 15
-    {"rboot", "reboots MCU"},                // 16
-    {"reset", "soft reset MCU"},             // 17
-    {"utime", "prints uptime"},              // 18
-    {"lcdsw", "switch LCD on/off"},          // 19
-    {"comon", "launch setup Serial"},        // 20
-    {"testb", "seial show btn arr output"},  // 21
-    {"tests", "test SHT30 sensor"},          // 22
-    {"sens", "show sensor values"}           // 23
+
+struct commandValues
+{
+  String commandVal;
+  String cmdStrArgs[8];
+  int cmdNumArgs[8];
+  int argsStrPos;
+  int argsNumPos;
 };
 
-// const char* comm_err = "Command not understood: ";
-// const char* comm_helo = "Hi, ";
-// const char* tnet_discon = "Disconnecting you!";
+commandValues parseCommand()
+{
+    commandValues parseCommand;
+    if (Serial.available())
+    {
+        String commandInput(Serial.readStringUntil('\n'));
+        commandInput.trim();
+        commandInput.toLowerCase();
+
+        parseCommand.commandVal = commandInput.substring(0, commandInput.indexOf(' '));
+        Serial.printf("%s <- command itself\n", parseCommand.commandVal.c_str());
+        String commandArgs = commandInput.substring(commandInput.indexOf(' '));
+        commandArgs.trim();
+        commandArgs.toLowerCase(); // ags string with spaces
+        Serial.printf("%s <- all args string with spaces\n", commandArgs.c_str());
+        Serial.printf("%d <- comm args string length\n", commandArgs.length());
+
+        String argsString[16]; // maybe into the structure right away? no
+        int argsCount = 0;
+
+        for (int i = 0; i <= commandArgs.length(); i++)
+        {
+            if (commandArgs[i] == ' ' && commandArgs[i + 1] != ' ')
+            {
+                argsCount++;
+            }
+            argsString[argsCount] += commandArgs[i];
+        }
+
+        Serial.printf("%d <- args count\n", argsCount);
+
+        parseCommand.argsNumPos = 0;
+        parseCommand.argsStrPos = 0;
+
+        for (int k = 0; k <= argsCount; k++)
+        {
+            argsString[k].trim();
+            Serial.printf("%s <- arg num %d\n", argsString[k].c_str(), k);
+            if ((int)argsString[k][0] > 47 && (int)argsString[k][0] < 58)
+            {
+                parseCommand.cmdNumArgs[parseCommand.argsNumPos] = argsString[k].toInt();
+                parseCommand.argsNumPos++;
+            }
+            else
+            {
+                parseCommand.cmdStrArgs[parseCommand.argsStrPos] = argsString[k];
+                parseCommand.argsStrPos++;
+            }
+        }
+
+        Serial.printf("%d <- qty Str vals\n", parseCommand.argsStrPos);
+        Serial.printf("%d <- qty Num vals\n", parseCommand.argsNumPos);
+
+        for (int i = 0; i < parseCommand.argsStrPos; i++)
+        {
+            Serial.printf("%s <- struct Str val num %d\n", parseCommand.cmdStrArgs[i].c_str(), i);
+        }
+
+        for (int i = 0; i < parseCommand.argsNumPos; i++)
+        {
+            Serial.printf("%d <- struct Num val num %d\n", parseCommand.cmdNumArgs[i], i);
+        }
+
+        Serial.printf("\n========== Done ============\n");
+    }
+    return parseCommand;
+}

@@ -1,16 +1,20 @@
 /* Version 1.6
 
-ESP32-S3-WROOM NTP CLI TEL, no LCD, no BTN
+ESP32-S3-N16R8 NTP CLI TEL, no LCD, no BTN
 
 */
 
 
-#include <WIFi.h>
 #include <Arduino.h>
+#include <vector>
+#include <string>
+#include <utility>
 #include <ESPTelnet.h>
 #include <Adafruit_NeoPixel.h>
-#include "cline.h"
-#include "comm.h"
+//#include "cline.h"
+
+#define TRACE(...) Serial.printf(__VA_ARGS__)
+#define TLNET(...) telnet.printf(__VA_ARGS__)
 
 #define RXD1 18
 #define TXD1 17
@@ -20,15 +24,44 @@ ESP32-S3-WROOM NTP CLI TEL, no LCD, no BTN
 #define RGB_LED_PIN 48
 #define NUM_RGB_LEDS 1 // number of RGB LEDs (1 WS2812 LED)
 
+std::vector<std::pair<std::string, std::string>> commands = {
+    {"", "error"},                           // 0
+    {"abt", "information about chip"},       // 1
+    {"cls", "clear terminal screen"},        // 2
+    {"helo", "greets you, showing ip"},      // 3
+    {"ping", "echoes reply \"pong\""},       // 4
+    {"help", "prints command help"},         // 5
+    {"wfinf", "prints wifi info"},           // 6
+    {"hwinf", "prints chip info"},           // 7
+    {"bye", "disconnects your session"},     // 8
+    {"time", "prints current time"},         // 9
+    {"date", "prints current date"},         // 10
+    {"wfcon", "connects to wifi"},           // 11
+    {"wfoff", "turns off wifi"},             // 12
+    {"wfscn", "scans for wifi networks"},    // 13
+    {"rssi", "prints wifi RSSI"},            // 14
+    {"uname", "prints chip name"},           // 15
+    {"rboot", "reboots MCU"},                // 16
+    {"reset", "soft reset MCU"},             // 17
+    {"utime", "prints uptime"},              // 18
+    {"lcdsw", "switch LCD on/off"},          // 19
+    {"comon", "launch setup Serial"},        // 20
+    {"testb", "seial show btn arr output"},  // 21
+    {"tests", "test SHT30 sensor"},          // 22
+    {"sens", "show sensor values"},          // 23
+    {"blink", "blink with built-in led"}     // 24
+};
+
 const char *ntpHost0 = "0.ru.pool.ntp.org";
 const char *ntpHost1 = "1.ru.pool.ntp.org";
 const char *ntpHost2 = "2.ru.pool.ntp.org";
+const char* build_date = __DATE__ " " __TIME__;
+const char* term_clear = "\033[2J\033[H";
+const char *mssid = "YOUR_SSID";
+const char *mpass = "YOUR_PASS";
 
-const char *mssid = "SSID";
-const char *mpass = "PASS";
-
-IPAddress ip;
-const uint16_t port = 23;
+IPAddress local_ip;
+const uint16_t telnet_port = 23;
 const int serial_speed = 115200;
 String client_ip;
 String boot_date;
@@ -55,7 +88,7 @@ String uptimeCount();
 String infoWiFi();
 String scanWiFi();
 String infoChip();
-
+void ledBlink(int);
 
 ESPTelnet telnet;
 Adafruit_NeoPixel rgb_led = Adafruit_NeoPixel(NUM_RGB_LEDS, RGB_LED_PIN, NEO_GRB + NEO_KHZ800);
@@ -139,7 +172,7 @@ void setupTelnet()
   telnet.onInputReceived(onTelnetInput);
 
   //TRACE("- Telnet: ");
-  if (telnet.begin(port))
+  if (telnet.begin(telnet_port))
   {
     TRACE("- Telnet running\n");
   }
@@ -155,7 +188,7 @@ void onTelnetConnect(const String ip)
 {
   TRACE("- Telnet: %s connected\n", ip.c_str());
   TLNET("\nWelcome %s\n(Use ^] +q to disconnect)\n", telnet.getIP().c_str());
-  client_ip = ip.c_str();
+  client_ip = ip;
 }
 
 void onTelnetDisconnect(const String ip)
@@ -191,8 +224,8 @@ void onSerialInput() {
 String commHandler(const String comm_input) {
   int exec_case = 0;
   String comm_output("");
-  for (int i = 1; i < comm_qty; i++) {
-    if (comm_array[i][0] == comm_input) {
+  for (int i = 1; i < commands.size(); i++) {
+    if (commands[i].first == std::string(comm_input.c_str())) {
       exec_case = i;
       break;
     } else {
@@ -229,11 +262,11 @@ String commHandler(const String comm_input) {
     }
     case 5:
     {
-      for (int k = 1; k < comm_qty; k++) {
+      for (int k = 1; k < commands.size(); k++) {
         if (k < 10) {
-          comm_output += "[  " + String(k) + " ] " + comm_array[k][0] + "\t - " + comm_array[k][1] + '\n';
+          comm_output += "[  " + String(k) + " ] " + String(commands[k].first.c_str()) + "\t - " + String(commands[k].second.c_str()) + '\n';
         } else {
-          comm_output += "[ " + String(k) + " ] " + comm_array[k][0] + "\t - " + comm_array[k][1] + '\n';
+          comm_output += "[ " + String(k) + " ] " + String(commands[k].first.c_str()) + "\t - " + String(commands[k].second.c_str()) + '\n';
         }
       }
       break;
@@ -362,6 +395,11 @@ String commHandler(const String comm_input) {
     {
       comm_output += "Considering sensor vals\n";
       break;
+    }
+    case 24:
+    {
+      comm_output += "RGB LED should blink\n";
+      ledBlink(3);
     }
   }
   return comm_output;
@@ -578,6 +616,19 @@ String infoChip() {
   return infoChipAll;
 }
 
+void ledBlink(int blink_count) {
+  for (int i = 0; i < blink_count; i++) {
+    rgb_led.setPixelColor(0, rgb_led.Color(0, 128, 0));
+    rgb_led.show();
+    delay(50);
+    rgb_led.setPixelColor(0, rgb_led.Color(0, 0, 0));
+    rgb_led.show();
+    delay(100);
+  }
+  rgb_led.setPixelColor(0, rgb_led.Color(0, 0, 0));
+  rgb_led.show();
+  rgb_led.clear();
+}
 
 void setup()
 {
@@ -591,8 +642,8 @@ void setup()
 
   if (isOnWiFi())
   {
-    ip = WiFi.localIP();
-    TRACE("\n- Telnet: %s:%u\n", ip.toString().c_str(), port);
+    local_ip = WiFi.localIP();
+    TRACE("\n- Telnet: %s:%u\n", local_ip.toString().c_str(), telnet_port);
     setupTelnet();
   }
   else
@@ -647,4 +698,3 @@ void loop(void)
   telnet.loop();
   onSerialInput();
 }
-
