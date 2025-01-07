@@ -8,6 +8,7 @@
 - WiFi scanner;
 - Ability to add any other functions invoked from the **CLI**
 - Command list avaliable by entering "help" command
+- Command line supports args (separated by any count of spaces)
 
 #### Libraries
 
@@ -15,4 +16,3 @@
 
 [Adafruit NeoPixel for built-in RGB led](https://github.com/adafruit/Adafruit_NeoPixel)
 
-**Leading goal is String functions for futher command line handler.**
