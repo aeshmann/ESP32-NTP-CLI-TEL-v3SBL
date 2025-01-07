@@ -6,11 +6,15 @@ ESP32-S3-N16R8 NTP CLI TEL, no LCD, no BTN
 
 
 #include <Arduino.h>
-#include <vector>
-#include <string>
-#include <utility>
 #include <ESPTelnet.h>
 #include <Adafruit_NeoPixel.h>
+#include <cstdint>
+#include <cctype>
+#include <string>
+#include <vector>
+#include <utility>
+#include <sstream>
+#include <algorithm>
 //#include "cline.h"
 
 #define TRACE(...) Serial.printf(__VA_ARGS__)
@@ -49,7 +53,8 @@ std::vector<std::pair<std::string, std::string>> commands = {
     {"testb", "seial show btn arr output"},  // 21
     {"tests", "test SHT30 sensor"},          // 22
     {"sens", "show sensor values"},          // 23
-    {"blink", "blink with built-in led"}     // 24
+    {"blink", "[count] [length] [pause]"},   // 24
+    {"beep", "[count] [length] [pause]"}     // 25
 };
 
 const char *ntpHost0 = "0.ru.pool.ntp.org";
@@ -57,8 +62,8 @@ const char *ntpHost1 = "1.ru.pool.ntp.org";
 const char *ntpHost2 = "2.ru.pool.ntp.org";
 const char* build_date = __DATE__ " " __TIME__;
 const char* term_clear = "\033[2J\033[H";
-const char *mssid = "YOUR_SSID";
-const char *mpass = "YOUR_PASS";
+const char *mssid = "SSID";
+const char *mpass = "PASS";
 
 IPAddress local_ip;
 const uint16_t telnet_port = 23;
@@ -70,9 +75,9 @@ time_t boot_time;
 void errorMsg(String, bool);
 
 bool initWiFi(const char *, const char *, int, int);
-bool isOnWiFi();
+bool isWiFiOn();
 
-void setupSerial(int);
+void setupSerial(int, int);
 void setupTelnet();
 
 void onTelnetConnect(String ip);
@@ -80,15 +85,15 @@ void onTelnetDisconnect(String ip);
 void onTelnetReconnect(String ip);
 void onTelnetConnectionAttempt(String ip);
 void onTelnetInput(String str);
-void onSerialInput();
-
+void readSerial0();
+std::string reduceString(std::string);
 String commHandler(String);
 String getTimeStr(int);
 String uptimeCount();
 String infoWiFi();
 String scanWiFi();
 String infoChip();
-void ledBlink(int);
+void ledBlink(int, int, int);
 
 ESPTelnet telnet;
 Adafruit_NeoPixel rgb_led = Adafruit_NeoPixel(NUM_RGB_LEDS, RGB_LED_PIN, NEO_GRB + NEO_KHZ800);
@@ -119,24 +124,24 @@ bool initWiFi(const char *mssid, const char *mpass,
     delay(pause);
     TRACE(".");
     i++;
-  } while (!isOnWiFi() && i < max_tries);
+  } while (!isWiFiOn() && i < max_tries);
   WiFi.setSleep(WIFI_PS_NONE);
+  TRACE("\nConnected!\n");
   WiFi.setAutoReconnect(true);
   WiFi.persistent(true);
-  TRACE("\nConnected!\n");
-  return isOnWiFi();
+  return isWiFiOn();
 }
 
-bool isOnWiFi()
+bool isWiFiOn()
 {
   return (WiFi.status() == WL_CONNECTED);
 }
 
-void setupSerial(int uart_num)
+void setupSerial(int uart_num, int uart_baud)
 {
   if (uart_num == 0)
   {
-    Serial.begin(serial_speed);
+    Serial.begin(uart_baud);
     while (!Serial)
     {
       ;
@@ -147,7 +152,7 @@ void setupSerial(int uart_num)
   }
   else if (uart_num == 1)
   {
-    Serial1.begin(serial_speed, SERIAL_8N1, RXD1, TXD1);
+    Serial1.begin(uart_baud, SERIAL_8N1, RXD1, TXD1);
     while (!Serial1)
     {
       ;
@@ -208,24 +213,48 @@ void onTelnetConnectionAttempt(const String ip)
 
 void onTelnetInput(const String comm_telnet)
 {
-  TLNET("[%s] > %s\n", getTimeStr(0), comm_telnet);
   TLNET("%s", commHandler(comm_telnet).c_str());
 }
 
-void onSerialInput() {
+void readSerial0() {
   if (Serial.available())
   {
     String comm_serial = Serial.readStringUntil('\n');
-    TRACE("[%s] > %s :\n", getTimeStr(0), comm_serial);
     TRACE("%s", commHandler(comm_serial).c_str());
   }
 }
 
+std::string reduceString(std::string str) {
+  int i = 0;
+  while (i < str.length()) {
+    if (str[i] == str[i + 1] && str[i] == ' ') {
+      str.erase(i + 1, 1);
+    } else {
+      i++;
+    }
+  }
+  if (str[0] == ' ') {
+    str.erase(0, 1);
+  }
+  return str;
+}
+
 String commHandler(const String comm_input) {
-  int exec_case = 0;
+  
+  std::string raw_input(comm_input.c_str());
+  std::string cmd_input(reduceString(raw_input));
+  std::stringstream cmd_strm(cmd_input);
+  std::vector<std::string> cmd_vect;
+  std::string token;
+
+  while (getline(cmd_strm, token, ' ')) {
+    cmd_vect.push_back(token);
+  }
+
   String comm_output("");
+  int exec_case = 0;
   for (int i = 1; i < commands.size(); i++) {
-    if (commands[i].first == std::string(comm_input.c_str())) {
+    if (commands[i].first == cmd_vect[0]) {
       exec_case = i;
       break;
     } else {
@@ -301,7 +330,7 @@ String commHandler(const String comm_input) {
     }
     case 11:
     {
-      if (!isOnWiFi()) {
+      if (!isWiFiOn()) {
         comm_output += "Connecting WiFi to " + String(mssid) + '\n';
         initWiFi(mssid, mpass, 20, 500);
       } else {
@@ -311,7 +340,7 @@ String commHandler(const String comm_input) {
     }
     case 12:
     {
-      if (isOnWiFi()) {
+      if (isWiFiOn()) {
         WiFi.disconnect();
         comm_output += "WiFi disconnected\n";
       } else {
@@ -376,7 +405,7 @@ String commHandler(const String comm_input) {
       if (Serial) {
         comm_output += "Serial is already up!\n";
       } else {
-        setupSerial(0);
+        setupSerial(0, serial_speed);
         comm_output += "Setting up Serial\n";
       }
       break;
@@ -398,8 +427,43 @@ String commHandler(const String comm_input) {
     }
     case 24:
     {
-      comm_output += "RGB LED should blink\n";
-      ledBlink(3);
+      int blk_count = 1;
+      int blk_length = 50;
+      int blk_pause = 100;
+      if (cmd_vect.size() >= 2) {
+        blk_count = stoi(cmd_vect[1]);
+      }
+      if (cmd_vect.size() >= 3) {
+        blk_length = stoi(cmd_vect[2]);
+      }
+      if (cmd_vect.size() >= 4) {
+        blk_pause = stoi(cmd_vect[3]);
+      }
+      ledBlink(blk_count, blk_length, blk_pause);
+      comm_output += "Blink " + (String)blk_count + " times, " + \
+      String(blk_length) + "ms length, " + (String)blk_pause +   \
+      "ms pause\n";
+      break;
+    }
+    case 25:
+    {
+      int sig_count = 1;
+      int sig_length = 50;
+      int sig_pause = 100;
+      if (cmd_vect.size() >= 2) {
+        sig_count = stoi(cmd_vect[1]);
+      }
+      if (cmd_vect.size() >= 3) {
+        sig_length = stoi(cmd_vect[2]);
+      }
+      if (cmd_vect.size() >= 4) {
+        sig_pause = stoi(cmd_vect[3]);
+      }
+      //signalBuzz(sig_count, sig_length, sig_pause);
+      comm_output += "Beep " + (String)sig_count + " times, " \
+      + (String)sig_length + "ms length, " + (String)sig_pause\
+      + "ms pause\n";
+      break;
     }
   }
   return comm_output;
@@ -460,7 +524,7 @@ String uptimeCount() {
 
 String infoWiFi() {
   String wfinf("");
-  if (isOnWiFi()) {
+  if (isWiFiOn()) {
     wfinf += "WiFi SSID: ";
     wfinf += WiFi.SSID();
     wfinf += " (ch ";
@@ -616,17 +680,20 @@ String infoChip() {
   return infoChipAll;
 }
 
-void ledBlink(int blink_count) {
+void ledBlink(int blink_count, int blink_length, int blink_pause) {
+  
   for (int i = 0; i < blink_count; i++) {
-    rgb_led.setPixelColor(0, rgb_led.Color(0, 128, 0));
-    rgb_led.show();
-    delay(50);
-    rgb_led.setPixelColor(0, rgb_led.Color(0, 0, 0));
-    rgb_led.show();
-    delay(100);
+    uint32_t blink_start = millis();
+    uint32_t blink_stop = blink_start + blink_length;
+    while (millis() <= blink_stop) {
+      rgb_led.setPixelColor(0, rgb_led.Color(0, 128, 0));
+      rgb_led.show();
+    }
+    while (millis() < blink_stop + blink_pause) {
+      rgb_led.setPixelColor(0, rgb_led.Color(0, 0, 0));
+      rgb_led.show();
+    }
   }
-  rgb_led.setPixelColor(0, rgb_led.Color(0, 0, 0));
-  rgb_led.show();
   rgb_led.clear();
 }
 
@@ -635,12 +702,12 @@ void setup()
   rgb_led.begin();
   rgb_led.setPixelColor(0, rgb_led.Color(64, 0, 0)); // Red
   rgb_led.show();
-  setupSerial(0);
-  setupSerial(1);
+  setupSerial(0, serial_speed);
+  setupSerial(1, serial_speed);
   initWiFi(mssid, mpass, 20, 500);
   WiFi.printDiag(Serial);
 
-  if (isOnWiFi())
+  if (isWiFiOn())
   {
     local_ip = WiFi.localIP();
     TRACE("\n- Telnet: %s:%u\n", local_ip.toString().c_str(), telnet_port);
@@ -696,5 +763,5 @@ void setup()
 void loop(void)
 {
   telnet.loop();
-  onSerialInput();
+  readSerial0();
 }
